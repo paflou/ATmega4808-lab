@@ -1,0 +1,146 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+//f_clk = 20Mhz
+//prescaler = 1024
+//ftimer = 20MHz / 1024 = 19,531KHz
+//T = value / ftimer
+
+
+#define T2 39					//  T = 39 / 19.5 = 2ms
+#define T1 19.5					//	T = 19.5 / 19.5 = 1ms
+#define T3 58.5					//  T = 58.5 / 19.5 = 3ms
+#define threshold 0x0001
+
+int returning = 0;
+int corners = 0;
+// right	--
+// left		++
+// when corners = 4, stop
+
+void turn_left(){
+	PORTD.OUT = 0b00000011;
+}
+
+void turn_right(){
+	PORTD.OUT = 0b00000110;
+}
+
+int main() {	
+	PORTD.DIR |= 0b00000111; //PIN 0-2 is output
+	
+	//init LED (all off)
+	PORTD.OUT |= 0b00000111;
+	
+	
+	// pullup enable and Interrupt enabled with sense on rising edge (button release)
+	PORTF.PIN5CTRL |= PORT_PULLUPEN_bm | PORT_ISC_RISING_gc;
+	
+	// split timer with prescaler 1024
+	TCA0.SPLIT.CTRLA = TCA_SPLIT_CLKSEL_DIV1024_gc | TCA_SPLIT_ENABLE_bm;
+	TCA0.SPLIT.CTRLD = TCA_SPLIT_SPLITM_bm;
+	
+	// Initialize ADC for Single Conversion Mode
+	ADC0.CTRLA |= ADC_RESSEL_10BIT_gc; // Set resolution to 10-bit
+	ADC0.CTRLA &= ~ADC_FREERUN_bm;     // Disable Free-Running mode (Single Conversion mode)
+	ADC0.CTRLA |= ADC_ENABLE_bm;       // Enable ADC
+	ADC0.MUXPOS = ADC_MUXPOS_AIN7_gc;  // Select input channel (AIN7)
+	ADC0.DBGCTRL |= ADC_DBGRUN_bm;     // Enable Debug Mode
+	
+	ADC0.INTCTRL = ADC_RESRDY_bm;		// Enable interrupt when result is ready
+	
+	ADC0.COMMAND = ADC_STCONV_bm;  // Start conversion (manual trigger)
+
+	TCA0.SPLIT.HCNT = T1;
+	
+	TCA0.SPLIT.INTCTRL |= TCA_SPLIT_HUNF_bm;	//Interrupt Enable for T1
+	
+	sei();										//begin accepting interrupt signals
+	while (corners < 4) {
+		;										//similar to a nop function
+	}
+	cli();
+}
+
+// right turn (left when returning)
+ISR(ADC0_RESRDY_vect) {
+	if(ADC0.RES > threshold) {
+		if(returning)
+			turn_left();
+		else
+			turn_right();
+		
+		corners --;
+	}
+	int intflags = ADC0.INTFLAGS;
+	ADC0.INTFLAGS = intflags;
+}
+
+// left turn (right when returning)
+ISR(ADC0_WCOMP_vect){
+	if(corners < 3) {
+		if(returning)
+			turn_right();
+		else
+			turn_left();
+		
+		PORTD.OUT = 0b00000101;					//led 1 on (going straight)
+	}
+	else {	
+		PORTD.OUT = 0b00000111;					//led 1 off
+		ADC0.CTRLE &= ~ADC_WINCM0_bm;			// Disable interrupt when RESULT < WINLT
+	}
+	corners++;
+	int intflags = ADC0.INTFLAGS;
+	ADC0.INTFLAGS = intflags;
+}
+
+// button pressed
+ISR(PORTF_PORT_vect){
+	PORTD.OUTCLR = 0b00000111;					//turn all led on
+	
+	returning = 1;
+	corners = 3 - corners;
+	
+	TCA0.SPLIT.LCNT = T3;						// set low timer
+	TCA0.SPLIT.INTFLAGS |= TCA_SPLIT_LUNF_bm;	//clear flags
+	TCA0.SPLIT.INTCTRL |= TCA_SPLIT_LUNF_bm ;	//enable timer for lights
+	
+	
+	PORTF.INTFLAGS |= PORT_INT5_bm;				//clear the interrupt flag
+}
+
+ISR(TCA0_HUNF_vect){
+			ADC0.CTRLA |= ADC_FREERUN_bm;				//Free-Running mode enabled
+			ADC0.WINLT = threshold;							//Set threshold
+			ADC0.INTCTRL &= ~ADC_RESRDY_bm;				// Disable ADC result ready interrupt
+			ADC0.INTCTRL |= ADC_WCMP_bm;				// Enable window comparator interrupt
+			ADC0.CTRLE |= ADC_WINCM0_bm;				//Interrupt when RESULT < WINLT
+
+			ADC0.COMMAND |= ADC_STCONV_bm;				//Start Conversion
+
+			PORTD.OUT = 0b00000101;						//led 1 on (straight)
+			
+			TCA0.SPLIT.LCNT = T2;
+			TCA0.SPLIT.INTFLAGS |= TCA_SPLIT_LUNF_bm;	//clear flags T2
+			TCA0.SPLIT.INTCTRL |= TCA_SPLIT_LUNF_bm ;	//enable timer for T2
+			
+	TCA0.SPLIT.INTFLAGS |= TCA_SPLIT_HUNF_bm;	//clear flags
+}
+
+ISR(TCA0_LUNF_vect){
+	ADC0.CTRLA &= ~ADC_FREERUN_bm;				// Disable Free-Running mode (Single Conversion mode)
+	ADC0.INTCTRL &= ~ADC_WCMP_bm;				// Disable window comparator interrupt
+	ADC0.CTRLE &= ~ADC_WINCM0_bm;				// Disable interrupt when RESULT < WINLT
+	ADC0.INTCTRL |= ADC_RESRDY_bm;				// Enable ADC result ready interrupt
+
+	PORTD.OUT |= 0b00000111;					//leds off
+	
+	ADC0.COMMAND = ADC_STCONV_bm;				// Start conversion (manual trigger)
+
+	TCA0.SPLIT.HCNT = T1;
+	TCA0.SPLIT.INTFLAGS |= TCA_SPLIT_HUNF_bm;	//clear flags T1
+	TCA0.SPLIT.INTCTRL |= TCA_SPLIT_HUNF_bm ;	//enable timer for T1
+	
+	TCA0.SPLIT.INTFLAGS |= TCA_SPLIT_LUNF_bm;	//clear flags
+}
