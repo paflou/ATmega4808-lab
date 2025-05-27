@@ -1,7 +1,7 @@
 # ATmega4808-lab
 A compilation of different lab exercises meant to run on an ATmega4808, as part of the curriculum at the University of Patras.
 
-## 1: AVR Elevator Button Control
+# 1: AVR Elevator Button Control
 This project demonstrates an interrupt-driven button control system on an ATmega4808 microcontroller. It simulates a basic 3-floor elevator LED indicator using external interrupts on Port F buttons and output control on Port D LEDs.
 
 - **LEDs**: Connected to `PORTD` pins **0**, **1**, and **2**
@@ -36,7 +36,7 @@ This project demonstrates an interrupt-driven button control system on an ATmega
 - Pressing **both buttons**:
   - Blinks `LED0` to indicate an invalid operation.
 
-## 2: Traffic Light System with Pedestrian and Tram Simulation
+# 2: Traffic Light System with Pedestrian and Tram Simulation
 
 This project implements a basic traffic light control system on the ATmega4808 using the **SPLIT timer mode** of the **TCA0** timer. It simulates interaction between **cars**, **pedestrians**, and a **tram**, handling timed light changes and user button interrupts.
 
@@ -90,7 +90,7 @@ This project implements a basic traffic light control system on the ATmega4808 u
 - Uses **split timer mode** to manage multiple independent timeouts.
 - Prevents **button re-entry** during light changes using a state machine and delayed reactivation.
 
-## 3: Autonomous Navigation with Obstacle Detection
+# 3: Autonomous Navigation with Obstacle Detection
 
 This lab simulates an autonomous vehicle navigating a grid using ADC-based distance sensors and timers. The robot can **move forward**, **detect obstacles**, **turn accordingly**, and **return to the start position** when a button is pressed.
 
